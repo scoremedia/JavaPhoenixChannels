@@ -203,7 +203,7 @@ public class Socket {
         this.endpointUri = endpointUri;
         this.heartbeatInterval = heartbeatIntervalInMs;
         this.httpClient = httpClient;
-        this.timer = new Timer("Reconnect Timer for " + endpointUri);
+        this.timer = new Timer("Phoenix Socket Reconnection Timer");
     }
 
     /**
