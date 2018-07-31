@@ -18,7 +18,7 @@ public class Push {
 
     private class TimeoutHook {
 
-        private ITimeoutCallback callback;
+        private List<ITimeoutCallback> callbacks = new ArrayList<>();
 
         private final long ms;
 
@@ -28,8 +28,8 @@ public class Push {
             this.ms = ms;
         }
 
-        public ITimeoutCallback getCallback() {
-            return callback;
+        public List<ITimeoutCallback> getCallbacks() {
+            return callbacks;
         }
 
         public long getMs() {
@@ -40,12 +40,16 @@ public class Push {
             return timerTask;
         }
 
-        public boolean hasCallback() {
-            return this.callback != null;
+        public void addCallback(final ITimeoutCallback callback) {
+            callbacks.add(callback);
         }
 
-        public void setCallback(final ITimeoutCallback callback) {
-            this.callback = callback;
+        public void clearCallbacks() {
+            callbacks.clear();
+        }
+
+        public void removeCallback(final ITimeoutCallback callback) {
+            callbacks.remove(callback);
         }
 
         public void setTimerTask(final TimerTask timerTask) {
@@ -109,11 +113,9 @@ public class Push {
      * @return This instance's self
      */
     public Push timeout(final ITimeoutCallback callback) {
-        if (this.timeoutHook.hasCallback()) {
-            throw new IllegalStateException("Only a single after hook can be applied to a Push");
+        synchronized (this.timeoutHook) {
+            this.timeoutHook.addCallback(callback);
         }
-
-        this.timeoutHook.setCallback(callback);
 
         return this;
     }
@@ -179,8 +181,11 @@ public class Push {
             @Override
             public void run() {
                 Push.this.cancelRefEvent();
-                if (Push.this.timeoutHook.hasCallback()) {
-                    Push.this.timeoutHook.getCallback().onTimeout();
+
+                synchronized (Push.this.timeoutHook) {
+                    for (ITimeoutCallback callback : Push.this.timeoutHook.getCallbacks()) {
+                        callback.onTimeout();
+                    }
                 }
             }
         };
