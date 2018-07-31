@@ -65,7 +65,7 @@ public class Channel {
             @Override
             public void onMessage(Envelope envelope) {
                 Channel.this.state = ChannelState.CLOSED;
-                Channel.this.socket.remove(Channel.this);
+                // Do not remove from the socket here, we will throw a CME
             }
         });
         this.onError(new IErrorCallback() {

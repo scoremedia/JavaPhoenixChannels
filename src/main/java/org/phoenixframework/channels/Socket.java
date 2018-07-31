@@ -56,9 +56,21 @@ public class Socket {
             try {
                 final Envelope envelope = objectMapper.readValue(text, Envelope.class);
                 synchronized (channelLock) {
-                    for (final Channel channel : channels) {
+
+                    final Iterator<Channel> chanIter = channels.iterator();
+                    while (chanIter.hasNext()) {
+                        final Channel channel = chanIter.next();
+
                         if (channel.isMember(envelope.getTopic())) {
-                            channel.trigger(envelope.getEvent(), envelope);
+                            final String event = envelope.getEvent();
+                            if (event.equals(ChannelEvent.CLOSE.getPhxEvent())) {
+                                // Handling close events here since we need to remove the channel
+                                // from the socket and this is the only safe way to do so without
+                                // throwing a ConcurrentModificationException
+                                chanIter.remove();
+                            } else {
+                                channel.trigger(envelope.getEvent(), envelope);
+                            }
                         }
                     }
                 }
@@ -365,12 +377,14 @@ public class Socket {
 
     @Override
     public String toString() {
-        return "PhoenixSocket{" +
-            "endpointUri='" + endpointUri + '\'' +
-            ", channels(" + channels.size() + ")=" + channels +
-            ", refNo=" + refNo +
-            ", webSocket=" + webSocket +
-            '}';
+        synchronized (channelLock) {
+            return "PhoenixSocket{" +
+                    "endpointUri='" + endpointUri + '\'' +
+                    ", channels(" + channels.size() + ")=" + channels +
+                    ", refNo=" + refNo +
+                    ", webSocket=" + webSocket +
+                    '}';
+        }
     }
 
     synchronized String makeRef() {
