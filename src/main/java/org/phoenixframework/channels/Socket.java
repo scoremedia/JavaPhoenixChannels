@@ -55,10 +55,22 @@ public class Socket {
 
             try {
                 final Envelope envelope = objectMapper.readValue(text, Envelope.class);
-                synchronized (channels) {
-                    for (final Channel channel : channels) {
+                synchronized (channelLock) {
+
+                    final Iterator<Channel> chanIter = channels.iterator();
+                    while (chanIter.hasNext()) {
+                        final Channel channel = chanIter.next();
+
                         if (channel.isMember(envelope.getTopic())) {
-                            channel.trigger(envelope.getEvent(), envelope);
+                            final String event = envelope.getEvent();
+                            if (event.equals(ChannelEvent.CLOSE.getPhxEvent())) {
+                                // Handling close events here since we need to remove the channel
+                                // from the socket and this is the only safe way to do so without
+                                // throwing a ConcurrentModificationException
+                                chanIter.remove();
+                            } else {
+                                channel.trigger(envelope.getEvent(), envelope);
+                            }
                         }
                     }
                 }
@@ -119,6 +131,8 @@ public class Socket {
     public static final int RECONNECT_INTERVAL_MS = 5000;
 
     private static final int DEFAULT_HEARTBEAT_INTERVAL = 7000;
+
+    private final Object channelLock = new Object();
 
     private final List<Channel> channels = new ArrayList<>();
 
@@ -216,7 +230,7 @@ public class Socket {
     public Channel chan(final String topic, final JsonNode payload) {
         log.trace("chan: {}, {}", topic, payload);
         final Channel channel = new Channel(topic, payload, Socket.this);
-        synchronized (channels) {
+        synchronized (channelLock) {
             channels.add(channel);
         }
         return channel;
@@ -340,8 +354,9 @@ public class Socket {
      * @param channel The channel to be removed
      */
     public void remove(final Channel channel) {
-        synchronized (channels) {
-            for (final Iterator chanIter = channels.iterator(); chanIter.hasNext(); ) {
+        synchronized (channelLock) {
+            final Iterator chanIter = channels.iterator();
+            while (chanIter.hasNext()) {
                 if (chanIter.next() == channel) {
                     chanIter.remove();
                     break;
@@ -351,19 +366,25 @@ public class Socket {
     }
 
     public void removeAllChannels() {
-        synchronized (channels) {
-            channels.clear();
+        synchronized (channelLock) {
+            final Iterator chanIter = channels.iterator();
+            while (chanIter.hasNext()) {
+                chanIter.next();
+                chanIter.remove();
+            }
         }
     }
 
     @Override
     public String toString() {
-        return "PhoenixSocket{" +
-            "endpointUri='" + endpointUri + '\'' +
-            ", channels(" + channels.size() + ")=" + channels +
-            ", refNo=" + refNo +
-            ", webSocket=" + webSocket +
-            '}';
+        synchronized (channelLock) {
+            return "PhoenixSocket{" +
+                    "endpointUri='" + endpointUri + '\'' +
+                    ", channels(" + channels.size() + ")=" + channels +
+                    ", refNo=" + refNo +
+                    ", webSocket=" + webSocket +
+                    '}';
+        }
     }
 
     synchronized String makeRef() {
@@ -437,7 +458,7 @@ public class Socket {
     }
 
     private void triggerChannelError() {
-        synchronized (channels) {
+        synchronized (channelLock) {
             for (final Channel channel : channels) {
                 channel.trigger(ChannelEvent.ERROR.getPhxEvent(), null);
             }
